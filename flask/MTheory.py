@@ -9,20 +9,184 @@ import matplotlib.style as ms
 import seaborn as sns
 ms.use('seaborn-muted')
 from sklearn.preprocessing import StandardScaler
-from MTheoryUtils import *
 
+
+
+
+# TODO: I'm going to write better comments and documentation.
+
+#### DEFN and UTILS ####
+
+# For tones > 12, drop their octave so that tone becomes same note in range [0-12]
+def reduce_oct(tone_or_tones):
+    if type(tone_or_tones) == tuple:
+        return tuple([note%12 if note%12 else 12 for note in tone_or_tones])
+    elif type(tone_or_tones) == list:
+        return [note%12 if note%12 else 12 for note in tone_or_tones]
+    elif type(tone_or_tones) == int:
+        tone_or_tones = tone_or_tones%12 if tone_or_tones%12 else 12
+        if tone_or_tones > 0:
+            return tone_or_tones
+        else:
+            return 13+tone_or_tones
+    else:
+        return None
+
+def transpose_tone(tone, by):
+    return reduce_oct(tone + by)
+
+def transpose_tones(tones, by):
+    return tuple([transpose_tone(tone, by) for tone in tones])
+
+TONES_TO_STR={1:'C',
+              2:'C#',
+              3:'D',
+              4:'D#',
+              5:'E',
+              6:'F',
+              7:'F#',
+              8:'G',
+              9:'G#',
+              10:'A',
+              11:'A#',
+              12:'B'}
+
+def def_STRS_TO_TONE():
+    #{'C': 1,... 'B':12}
+    STRS_TO_TONE = {}
+    for tone in TONES_TO_STR.keys():
+        note = TONES_TO_STR[tone]
+        STRS_TO_TONE[note] = tone
+    return STRS_TO_TONE
+STRS_TO_TONE = def_STRS_TO_TONE()
+
+# Canonical chord tones
+CHORD_TYPES = {'maj'      :(1,5,8),    # Major
+               'min'      :(1,4,8)     # Minor
+               #'dim'      :(1,4,7)    # Diminished
+               #'dim7':(1,4,7,11)
+               #'maj7'     :(1,5,8,11)
+}
+
+def _defineCHORDS_abs():
+# Define absolute chords by each root tone's root position chords
+# i.e. {'C':(1,5,8), 'c':(1,4,8)...}
+    CHORDS_abs = {}
+    TONES_TO_CHORDS_abs ={}
+    canonical_maj = CHORD_TYPES['maj']
+    canonical_min = CHORD_TYPES['min']
+    for root_tone in range(1,13):
+        root_note = TONES_TO_STR[root_tone]
+        maj_tones = transpose_tones(canonical_maj, root_tone - 1)  # Tone's major chord
+        min_tones = transpose_tones(canonical_min, root_tone - 1)  # Tone's minor chord
+
+        CHORDS_abs[root_note.upper()+'M'] = maj_tones
+        CHORDS_abs[root_note.lower()+'m'] = min_tones
+        TONES_TO_CHORDS_abs[maj_tones] = root_note.upper()+'M'
+        TONES_TO_CHORDS_abs[min_tones] = root_note.lower()+'m'
+    return CHORDS_abs, TONES_TO_CHORDS_abs
+CHORDS_abs, TONES_TO_CHORDS_abs = _defineCHORDS_abs()
+
+# Chords whose tones are sorted on a C-scale
+# i.e {'C':(1,5,8)...'g':(3,7,12)}
+# i.e. {(1,5,8):'C'...(3,7,12):'g'}
+def _defineCANONICAL_CHORD_TONES():
+    CANONICAL_CHORD_TONES = {}
+    CANONICAL_TONES_TO_CHORD = {}
+    for chord, tones in CHORDS_abs.items():
+        canonical_tones = tuple(sorted(tones))
+        CANONICAL_CHORD_TONES[chord] = canonical_tones
+        CANONICAL_TONES_TO_CHORD[canonical_tones] = chord
+    return CANONICAL_CHORD_TONES, CANONICAL_TONES_TO_CHORD
+CANONICAL_CHORD_TONES, CANONICAL_TONES_TO_CHORD = _defineCANONICAL_CHORD_TONES()
+
+# Canonical circle-of-fifths of distances from C.
+# Derivation:
+    #posdist = [(C + trans, trans/7) for trans in range(0,7*7,7)]
+    #negdist = [(C - trans, trans/7) for trans in range(0,7*7,7)]
+    #distances = sorted(posdist+ negdist)
+DIST_OF_TONE = {1:0,
+                2:5,
+                3:2,
+                4:3,
+                5:4,
+                6:1,
+                7:6,
+                8:1,
+                9:4,
+                10:3,
+                11:2,
+                12:5}
+
+MAJ_SCALE = (1,3,5,6,8,10,12)
+MIN_SCALE = (1,3,4,6,8,9,11,12)
+
+HARMONY_DICT = {
+    'Tones':       {'I':(1,5,8),'II':(3,7,10),'III':(5,9,12),'IV':(1,6,10),'V':(3,8,12),'VI':(2,5,10),'VII':(4,7,12),
+                    'i':(1,4,8),'ii':(3,6,10),'iii':(5,8,12),'iv':(1,6,9),'v':(3,8,11),'vi':(1,5,10),'vii':(3,7,12),
+                    'IIb':(2,6,9),'iib':(2,5,9),'IIIb':(4,8,11),'iiib':(4,7,11),'TT':(2,7,11),'tt':(2,7,10),'VIb':(1,4,9),'vib':(4,9,12),'VIIb':(3,6,11),'viib':(2,6,11)},
+
+    'Distance':    {'I':(0,2),'II':(5,5),'III':(5,3),'IV':(2,5),'V':(1,1),'VI':(5,3),'VII':(5,5),
+                    'i':(4,0),'ii':(3,3),'iii':(4,6),'iv':(5,2),'v':(5,2),'vi':(3,5),'vii':(3,6),
+                    'IIb':(6,3),'iib':(7,7),'IIIb':(6,6),'iiib':(6,6),'TT':(10,10),'tt':(10,10),'VIb':(4,4),'vib':(5,6),'VIIb':(6,3),'viib':(3,3)}
+                }
+HARMONY = pd.DataFrame(HARMONY_DICT)
+HARMONY['Chord'] = HARMONY['Tones'].apply(lambda x: CANONICAL_TONES_TO_CHORD[x])
+HARMONY.reset_index(inplace=True)
+HARMONY.rename({'index':'Harmony'},axis=1,inplace=True)
+
+def lookup_tonality(tonality, by, at, to_find):
+    tonality = Chord(tonality)
+    at = str(at)
+    raw_row = HARMONY[HARMONY[by]==at]
+    raw_chord = raw_row['Chord'].tolist()[0]
+
+    if by == 'Chord':
+        transpose_for = ['Harmony', 'Distance']
+        transposition = Chord(tonality).transposition_to(Chord(at))
+        if Chord(at).is_major():    # Looking for a major chord
+            transposed_chord = str(Chord('CM')+transposition)
+        else:
+            transposed_chord = str(Chord('cm')+transposition)
+    elif by == 'Harmony':
+        transpose_for = ['Chord', 'Tones']
+        if str(at) == str(at).upper():
+            transposition = Chord('CM').transposition_to(Chord(tonality))
+        else:
+            transposition = Chord('cm').transposition_to(Chord(tonality))
+        mode_to_find = by == by.upper()
+        transposed_chord = str(Chord(raw_chord)+transposition)
+    else:
+        raise KeyError("Method lookup_tonality is only implemented for by='Chord' or by='Harmony'")
+
+
+    if to_find not in transpose_for:
+        if to_find != 'Distance':
+            return raw_row[to_find].tolist()[0]
+        else:
+            return (raw_row['Distance'].tolist()[0])[tonality.is_minor()]# Return tuple index 1 in minor
+    else:
+        transposed_row = HARMONY[HARMONY['Chord']==transposed_chord]
+        if to_find != 'Distance':
+            return transposed_row[to_find].tolist()[0]
+        else:
+            return (transposed_row['Distance'].tolist()[0])[tonality.is_minor()] # Return tuple index 1 in minor
+
+def get_notes():
+    return [Note(tone) for tone in range(1,13)]
+
+def get_chords():
+    return [Chord(tones) for tones in CHORDS_abs.values()]
+
+def dict_sorted(dictionary, key_int, reverse=False):
+    return collections.OrderedDict(sorted(dictionary.items(), key=lambda x: x[key_int], reverse=reverse))
+
+
+##### BASIC CLASSES #####
+
+# Input sample_repr can be an extraction dict (source=extractions), or a pickled Sample filename (source=pickle)
 class Sample():
-    """ Class to manage an audio clip.
-
-        Important attributes:
-
-        .base: dict of basic Librosa-extracted audio data.
-               Typical Sample.base will contain 'y','sr','y_harmonic','y_percussive','chroma','sparse'
-        .idee: Sample identifier
-
-        """
-
-    def __init__(self, extractions, idee={}):
+    def __init__(self, extractions, idee={}): #extractions, filename
         self.base = extractions
         self.idee = idee
 
@@ -35,7 +199,6 @@ class Sample():
     __repr__=__str__
 
     def split(self, seconds=30, n=None, hop_length=512):
-        """ Splits a Sample into evenly-sized chronological pieces. """
         if seconds:
             # Number of frames per segment
             frames_per_seg = librosa.core.time_to_frames(seconds, sr=self.base['sr'], hop_length=hop_length, n_fft=None)
@@ -86,11 +249,11 @@ class Sample():
 
             return new_samples
 
+    def to_pickle(self, filename):
+        pickle.dump(self,open(filename,'wb'))
+
     def build_chords(self, source='chroma'):
-        """ Based on notes, computes and stores (in Sample.chords attribute)
-            a matrix representing the respective strengths of each chord
-            at each moment in time.
-        """
+
         # Raw tone intensity data to use
         source = self.base[source]
 
@@ -114,15 +277,12 @@ class Sample():
         #self.chords = StandardScaler().fit_transform(matrix)
 
     def try_build_chords(self):
-        """ Builds Sample chords if they haven't been built already. """
         if not hasattr(self, 'chords'):
             self.build_chords()
 
     # Dictionary of average chord intensities in Sample
     def chord_mean_intensities(self, sort=False):
-        """ Produces a dictionary of each chord's mean intensity
-            over the chronological length of Sample.
-        """
+
         self.try_build_chords()
         chords = get_chords()
         tonalities = self.chords.mean(axis=1)
@@ -134,10 +294,7 @@ class Sample():
             return tonality
 
     def build_tonality_matches(self):
-        """ Based on a sample's computed Chords, computes the closeness of fit
-            for each tonality, the best-fitting tonality, and a "tonal purity"
-            score for the Sample.
-        """
+
         self.try_build_chords()
         chords_dict = self.chord_mean_intensities()
         winning = Chord('CM')
@@ -166,22 +323,17 @@ class Sample():
         self.mode = 'Major' if self.tonality.is_major() else 'Minor'
 
     def try_build_tonality_matches(self):
-        """ Builds tonality matches if they haven't been built already. """
         if not hasattr(self, 'tonality_matches'):
             self.build_tonality_matches()
 
     def tonalities(self, sort=False):
-        """ Return the tonalities of a Sample (with the option to sort) """
+
         if not sort:
             return self.tonality_matches
         else:
             return dict_sorted(self.tonality_matches, key_int=1, reverse=True)
 
     def try_build_dist_from_parent_tonality(self):
-        """ If a Sample represents just a portion of a longer piece of audio,
-            and its parent's tonality is known, calculate the tonal remoteness
-            of the Sample from its parent Sample.
-        """
         self.try_build_tonality_matches()
 
         if hasattr(self, 'parent') and 'tonality' in self.parent.keys():
@@ -199,7 +351,7 @@ class Sample():
             return None
 
     def build_harmonies():
-        """ Estimate the harmonies at each moment of the Sample """
+
         def chordname_to_harmony_name(tonality, chordname):
             return lookup_tonality(tonality, by='Chord', at=chordname, to_find='Harmony')
 
@@ -210,7 +362,7 @@ class Sample():
         # Raw tone intensity data to use
         source = self.chords
 
-        # List of chords to be evaluated for distance from notes at each moment
+        # List of cords to be evaluated for distance from notes at each moment
         moments = self.all_moments()
         matrix = np.zeros((len(HARMONY), 0))
 
@@ -226,8 +378,6 @@ class Sample():
 
         self.chords = matrix
         #self.chords = StandardScaler().fit_transform(matrix) ??
-
-    """ Sample class helpers: """
 
     def note_freqs(self, sort=False):
         freqs_dict = collections.OrderedDict()
@@ -263,32 +413,25 @@ class Sample():
             moment_dict[note] = moment[note.tone-1]
         return moment_dict
 
+    # Returns list of all the momentary frequencies in Sample
+        # Functions like a pivot on self.notes_freqs,
+        # transforming it from a note_dict of arrays to a list of note_dicts
     def all_moments(self):
-        """ Returns list of all the momentary frequencies in Sample
-
-            Useful for pivoting on self.notes_freqs,
-            transforming it from a note_dict of arrays to a list of note_dicts
-        """
         return [self.moment(i) for i in range(self.base['chroma'].shape[1])]
 
-
+    # Takes a moment -- a dict of note frequencies at a particular moment
+    # Returns the distance for each chord to that moment -- a {Chord_i:dist_float_i...}
     def chords_dist_at(self, moment):
-        """ Input: dict of note frequencies at a particular moment
-            Returns the distance for each chord to that moment -- a {Chord_i:dist_float_i...}
-        """
         chords_dist_dict = collections.OrderedDict()
         chords = get_chords()
         for chord in chords:
             chords_dist_dict[chord] = chord.dist_of_freqs(moment)
         return chords_dist_dict
 
+    # Represents intervalic intensity at each moment of Sample
+    # Row 1 is half-steps (i.e. m2 and M7), row 2 is whole_steps(i.e. M2 and m7), etc
+    # Row 0 is unison, and it is interpreted extremely literally as always equal to 0
     def interval_matrix(self):
-        """ Returns a matrix representing the intensity of each chromatic intervals
-            over the chronological length of the sample.
-
-            Row 1 is half-steps (i.e. m2 and M7), row 2 is whole_steps(i.e. M2 and m7), etc
-            Row 0 is unison, and it is interpreted extremely literally as always equal to 0
-        """
 
         # What it sounds like
         def mean(freq1, freq2):
@@ -325,19 +468,11 @@ class Sample():
         return int_matrix
 
     def interval_summary(self):
-        """ Returns the average intensity of each interval over the Sample's
-            chronological length
-        """
         return np.mean(self.interval_matrix(),axis=1)
 
-    def display_intervals(self, bins=20, show_TT=False):
-        """ Produces a matplotlib visualization of intervalic intensity """
-
+    def display_intervals(self, bins=20):
         im = self.interval_matrix()
-        if not show_TT: # Skip TT for display purposes b/c they're so rare
-            display = im[1:-1,::im.shape[1]//bins]
-        else:
-            display = im[1:,::im.shape[1]//bins]
+        display = im[1:-1,::im.shape[1]//bins] # Skip TT for display purposes
         sns.set(font_scale = 3)
         fig, ax = plt.subplots(figsize=(20,10))
         sns.heatmap(display)
@@ -346,13 +481,10 @@ class Sample():
         ax.set(yticklabels=[1,2,3,4,5])
 
     def interval_class_summary(self):
-        """ Returns the average intensity of interval classes (dissonant, consonant, perfect) """
         return np.mean(self.interval_class_matrix(), axis=1)
 
     def interval_class_matrix(self):
-        """ Returns a matrix representing intensity over the course of the Sample
-            of interval groups dissonant, consonant, and perfect.
-        """
+
         # Collect and scale an interval_matrix across song
         im = self.interval_matrix()
         scaler = StandardScaler()
@@ -368,7 +500,6 @@ class Sample():
         return DCP
 
     def display_interval_classes(self, bins=20):
-        """ Produces matplotlib visualization of interval classes """
         #hop_length=512
         DCP = self.interval_class_matrix()
         display = DCP[:,::DCP.shape[1]//bins]
@@ -380,19 +511,19 @@ class Sample():
         ax.set(yticklabels=['Dissonance','Consonance','Perfect'])
 
     def polyphony_array(self):
-        """ Estimates the level of polyphony across Sample. """
+        """
+        Estimates the level of polyphony across Sample
+        """
+        # Variance between pitch-class intensity at each moment in time
         return np.var(self.base['chroma'], axis=0)
 
     def mean_polyphony(self):
-        """ Estimates the average polyphony over the entire Sample. """
         return np.mean(self.polyphony_array())
 
     def var_polyphony(self):
-        """ Estimates the variance of polyphony over the entire Sample. """
         return np.var(self.polyphony_array())
 
     def display_polyphony(self, bins=20):
-        """ Produces matplotlib visualization of polyphony over the Sample. """
         polyphony = self.polyphony_array()
 
         from scipy.interpolate import spline
@@ -409,7 +540,6 @@ class Sample():
         #ax.set(yticklabels=['Dissonance','Consonance','Perfect'])
 
     def display_chords(self, bins=30, exaggerate=False):
-        """ Produces matplotlib visualization of computed chord intensities over the Sample """
         if not hasattr(self, 'chords'):
             self.build_chords()
 
@@ -422,6 +552,24 @@ class Sample():
                 display_chords = self.chords**(exaggerate+1)
         else:
             display_chords = self.chords
+
+
+        #times = librosa.frames_to_time(display_chords)
+        #times = np.array(times)
+
+        #print(times)
+        #plt.figure(figsize=(18, 8))
+        #sns.heatmap(display_chords)
+        #plt.xlabel('Time')
+        #plt.ylabel('Chord')
+        #ax = plt.gca()
+        #ax.invert_yaxis()
+        #ax.set_yticklabels(labels=all_chords, rotation=0, fontsize=10)
+        #ax.set_xticklabels(labels=times, rotation=0, fontsize=10)
+        #plt.axis('tight')
+        #plt.tight_layout()
+        #plt.title('Chord Match');
+
 
         times = librosa.frames_to_time(display_chords)
         times = np.array(times)
@@ -443,11 +591,10 @@ class Sample():
         #ax.set(xticklabels=times)
         ax.set_title('Chord Match')
 
+# Constructs a note from a note representation
+# such as a tone (int 1-12), a note name (valid natural or sharp), or another Note
 class Note():
-    """ Class representing a note. Underlying each Note is an int tone 0-11. """
-
     def __init__(self, note_repr, intensity=None):
-        """ Construct a Note from another Note, a tone, or a string representation of a Note """
         if type(note_repr) == Note:
             self.tone = note_repr.tone
             self.name = note_repr.name
@@ -505,10 +652,8 @@ class Note():
     def mean_freq_in(self, sample):
         return np.mean(self.freqs_in(sample))
 
+    # Harmonic distance to another note (Linear)
     def dist_of(self, other):
-        """ Harmonic distance to another note.
-            Measured in linear distance, derived from circle-of-fifths.
-        """
         transposition = (self-1).tone
         transposed_other = (other-transposition)
         transposed_other_tone = transposed_other.tone
@@ -516,13 +661,9 @@ class Note():
         return distance
 
 class Chord():
-    """ Class representing a chord, i.e. a group of notes. """
 
+    # Create a chord from a chord representation, such as a tuple of notes, tones, a chord name, or a Chord
     def __init__(self, chord_repr):
-        """ Construct a chord from a chord representation,
-            such as a tuple of notes, tones, a chord name, or another Chord.
-        """
-
         if type(chord_repr) == tuple or type(chord_repr) == list:
             self.notes = tuple(Note(note_repr) for note_repr in chord_repr)
         elif type(chord_repr) == Chord:
@@ -584,10 +725,9 @@ class Chord():
     def mean_freq_in(self, sample, rootweight=1):
         return np.mean(self.freqs_in(sample, rootweight=rootweight))
 
+    # Harmonic distance to another chord (Linear)
+    # Defined as average of shortest note distances to other's notes
     def dist_of(self, other):
-        """ Harmonic distance to another chord.
-            Defined as the average of the shortest note-pair distances to the other Chord's notes.
-        """
         sum = 0
         divisor = len(self.notes)
         for self_note in self.notes:
@@ -598,41 +738,49 @@ class Chord():
             sum += shortest_distance
         return sum/divisor
 
-############################
-##### DISTANCE HELPERS #####
-############################
+    # Harmonic distance to a group of tones (Linear)
+    # Defined as average of shortest note distances to other's tones
+    def dist_of_notes(self, notes):
+        sum = 0
+        divisor = len(self.notes)
+        for other_note in notes:
+            shortest_distance = 6
+            for self_note in self.notes:
+                distance = self_note.dist_of(other_note)
+                if (distance < shortest_distance): shortest_distance = distance
+            sum += shortest_distance
+        return sum/divisor
 
+########
+
+    # Return the harmonic distance between another note and the chord
     def dist_of_note(self, other_note):
-        """ Returns the harmonic distance between another note and the chord. """
         shortest_distance = 6
         for self_note in self.notes:
             distance = self_note.dist_of(other_note)
             if (distance < shortest_distance): shortest_distance = distance
         return shortest_distance
 
+    # Return the harmonic distance between the chord and another note weighted by otherfreq
     def dist_of_freq(self, other_note, other_notefreq):
-        """ Return the harmonic distance between the chord and another note weighted by otherfreq. """
         return self.dist_of_note(other_note) * other_notefreq
 
+    # Return the average harmonic distance between Chord and a group of tones, weighted by their freqs
     def dist_of_freqs(self, other_notes_freq_dict):
-        """ Return the average harmonic distance between Chord and a group of tones,
-            weighted by their intensities.
-        """
         sum = 0
         divisor = len(self.notes)
         for other_note, other_notefreq in other_notes_freq_dict.items():
             sum += self.dist_of_freq(other_note, other_notefreq)
         return sum / divisor
 
-
+    # How close a match to a dict of tone intensities
     def match_freqs(self, other_notes_freq_dict):
-        """ Returns how close a match is to a dict of tone intensities. """
         return 1 / (self.dist_of_freqs(other_notes_freq_dict)+1)
+#######
 
+# Pass chromslice, or a correctly formatted df, if available
+# Assumes in root position
     def freq(self, noteFreq_df=None, chromslice=None):
-        """ Takes chromslice, or a correctly formatted df, if available.
-            Assumes chord is in root position.
-        """
         if noteFreq_df is None and chromslice is None:
             raise Error ('Chord.strength requires either a note_freq_df or chromslice')
         if noteFreq_df is None:
@@ -694,9 +842,7 @@ def distance(chord1, chord2):
 #####################
 
 def display_chroma(chromagram, sr=22050, subplot_num=1, title='Chromagram'):
-    """ Produces matplotlib visualization of a chromograph.
-        Modified from https://librosa.github.io/librosa/tutorial.html
-    """
+# Adapted from https://librosa.github.io/librosa/tutorial.html
     plt.figure(figsize=(20,20))
     sns.set(font_scale = 3)
     plot = plt.subplot(2, 1, subplot_num)
@@ -710,12 +856,8 @@ def display_chroma(chromagram, sr=22050, subplot_num=1, title='Chromagram'):
 ###### SAVE/LOAD PICKLE CONTENT ######
 ######################################
 
+# Holding fast to Pandas' idiosyncratic convention of asymmertrically naming functions to_pickle and read_pickle
 def to_pickle(base_filename, extractions_dict, extension='.pkl'):
-    """ Pickle a dictionary of librosa extractions.
-
-        Holding fast to Pandas' idiosyncratic convention
-        of asymmertrically naming functions "to_pickle" and "read_pickle"
-    """
     for key in extractions_dict.keys():
         data = extractions_dict[key]
         filename = base_filename.split('.')[0]
@@ -743,8 +885,6 @@ def read_pickle(base_filename, extraction_keys=['y','sr','y_harmonic','y_percuss
     return extractions
 
 def parse_audio(audio_path, extraction_keys=['y','sr','y_harmonic','y_percussive','chroma','sparse']):
-    """ Extract relevant data from raw .mp3 file. """
-
     extractions = {}
     sr = 22050
 
